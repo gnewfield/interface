@@ -13,6 +13,7 @@ import { ChainId, Currency, CurrencyAmount, Percent, Token } from '@uniswap/sdk-
 import { UNIVERSAL_ROUTER_ADDRESS } from '@uniswap/universal-router-sdk'
 import { useWeb3React } from '@web3-react/core'
 import { sendAnalyticsEvent, Trace, TraceEvent, useTrace } from 'analytics'
+import VenmoLogo from 'assets/images/Venmo_Logo_Blue.png'
 import { useToggleAccountDrawer } from 'components/AccountDrawer'
 import { ButtonError, ButtonLight, ButtonPrimary } from 'components/Button'
 import { GrayCard } from 'components/Card'
@@ -20,6 +21,7 @@ import { AutoColumn } from 'components/Column'
 import PayCurrencyInputPanel from 'components/CurrencyInputPanel/PayCurrencyInputPanel'
 import SwapCurrencyInputPanel from 'components/CurrencyInputPanel/SwapCurrencyInputPanel'
 import { NetworkAlert } from 'components/NetworkAlert/NetworkAlert'
+import { RowBetween } from 'components/Row'
 import { SearchInput } from 'components/SearchModal/styled'
 import confirmPriceImpactWithoutFee from 'components/swap/confirmPriceImpactWithoutFee'
 import ConfirmSendModal from 'components/swap/ConfirmSendModal'
@@ -135,8 +137,17 @@ const OutputSwapSection = styled(SwapSection)`
 const RecipientSection = styled(SwapSection)`
   border-bottom: ${({ theme }) => `1px solid ${theme.surface1}`};
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  align-items: left;
+  justify-content: left;
+`
+const Logo = styled.span`
+  background: url(${VenmoLogo});
+  background-size: contain;
+  background-repeat: no-repeat;
+  width: 90px;
+  height: 15px;
+  overflow: hidden;
 `
 
 export const RecipientInput = styled(SearchInput)`
@@ -145,6 +156,18 @@ export const RecipientInput = styled(SearchInput)`
   border: none;
   :focus {
     border: none;
+  }
+  text-align: left;
+  font-size: 36px;
+  font-weight: 485;
+  max-height: 60px;
+  padding: 0px;
+  border-radius: 0px;
+  &::placeholder {
+    font-size: 36px;
+    font-weight: 485;
+    max-height: 60px;
+    color: ${({ theme }) => theme.neutral3};
   }
 `
 
@@ -1062,10 +1085,14 @@ export function Swap({
         </div>
         <div style={{ marginBottom: '8px' }}>
           <RecipientSection>
+            <RowBetween>
+              <ThemedText.SubHeaderSmall style={{ userSelect: 'none' }}>To</ThemedText.SubHeaderSmall>
+              {recipientAddress?.startsWith('@') && recipientAddress.length > 1 && <Logo />}
+            </RowBetween>
             <RecipientInput
               type="text"
               id="reciptient-search-input"
-              placeholder={t`Enter recipient address`}
+              placeholder={t`@Hayden-Adams`}
               autoComplete="off"
               value={recipientAddress}
               onChange={(e) => setRecipientAddress(e.target.value)}
