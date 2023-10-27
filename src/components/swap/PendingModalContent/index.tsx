@@ -89,6 +89,7 @@ export type PendingConfirmModalState = Extract<
   | ConfirmModalState.PENDING_CONFIRMATION
   | ConfirmModalState.WRAPPING
   | ConfirmModalState.RESETTING_TOKEN_ALLOWANCE
+  | ConfirmModalState.PENDING_SEND
 >
 
 interface PendingModalStep {
@@ -110,6 +111,7 @@ interface PendingModalContentProps {
   revocationPending?: boolean
   swapError?: Error | string
   onRetryUniswapXSignature?: () => void
+  sendTxHash?: string
 }
 
 interface ContentArgs {
@@ -125,6 +127,8 @@ interface ContentArgs {
   order?: UniswapXOrderDetails
   swapError?: Error | string
   onRetryUniswapXSignature?: () => void
+  sendPending: boolean
+  sendConfirmed: boolean
 }
 
 function getPendingConfirmationContent({
@@ -208,11 +212,18 @@ function useStepContents(args: ContentArgs): Record<PendingConfirmModalState, Pe
     swapResult,
     chainId,
     swapError,
+    sendPending,
+    sendConfirmed,
     onRetryUniswapXSignature,
   } = args
 
   return useMemo(
     () => ({
+      [ConfirmModalState.PENDING_SEND]: {
+        title: sendConfirmed ? t`Sent!` : t`Send`,
+        subtitle: t`Sending can be done in one transaction.`,
+        bottomLabel: sendPending ? t`Pending...` : t`Proceed in your wallet`,
+      },
       [ConfirmModalState.WRAPPING]: {
         title: t`Wrap ETH`,
         subtitle: (
@@ -267,6 +278,8 @@ function useStepContents(args: ContentArgs): Record<PendingConfirmModalState, Pe
       wrapPending,
       swapError,
       onRetryUniswapXSignature,
+      sendConfirmed,
+      sendPending,
     ]
   )
 }
@@ -281,6 +294,7 @@ export function PendingModalContent({
   tokenApprovalPending = false,
   revocationPending = false,
   swapError,
+  sendTxHash,
   onRetryUniswapXSignature,
 }: PendingModalContentProps) {
   const { chainId } = useWeb3React()
@@ -291,8 +305,10 @@ export function PendingModalContent({
   const swapConfirmed = swapStatus === TransactionStatus.Confirmed || order?.status === UniswapXOrderStatus.FILLED
   const wrapConfirmed = useIsTransactionConfirmed(wrapTxHash)
 
+  const sendConfirmed = useIsTransactionConfirmed(sendTxHash)
   const swapPending = swapResult !== undefined && !swapConfirmed
-  const wrapPending = wrapTxHash != undefined && !wrapConfirmed
+  const wrapPending = wrapTxHash !== undefined && !wrapConfirmed
+  const sendPending = sendTxHash !== undefined && !sendConfirmed
 
   const stepContents = useStepContents({
     approvalCurrency: trade?.inputAmount.currency,
@@ -306,6 +322,8 @@ export function PendingModalContent({
     chainId,
     swapError,
     onRetryUniswapXSignature,
+    sendConfirmed,
+    sendPending,
   })
 
   const currentStepContainerRef = useRef<HTMLDivElement>(null)
@@ -321,10 +339,11 @@ export function PendingModalContent({
   }
 
   // On mainnet, we show a different icon when the transaction is submitted but pending confirmation.
-  const showSubmitted = swapPending && !swapConfirmed && chainId === ChainId.MAINNET
-  const showSuccess = swapConfirmed || (chainId !== ChainId.MAINNET && swapPending)
+  const showSubmitted =
+    (swapPending && !swapConfirmed) || (sendPending && !sendConfirmed && chainId === ChainId.MAINNET)
+  const showSuccess = swapConfirmed || sendConfirmed || (chainId !== ChainId.MAINNET && swapPending)
 
-  const transactionPending = revocationPending || tokenApprovalPending || wrapPending || swapPending
+  const transactionPending = revocationPending || tokenApprovalPending || wrapPending || swapPending || sendPending
 
   return (
     <PendingModalContainer gap="lg">
@@ -334,9 +353,9 @@ export function PendingModalContent({
         {/* Shown during the setup approval step as a small badge. */}
         {/* Scales up once we transition from setup approval to permit signature. */}
         {/* Fades out after the permit signature. */}
-        {currentStep !== ConfirmModalState.PENDING_CONFIRMATION && (
+        {currentStep !== ConfirmModalState.PENDING_CONFIRMATION && !sendPending && !sendConfirmed && (
           <CurrencyLoader
-            currency={trade?.inputAmount.currency}
+            currency={trade?.inputAmount.currency ?? trade?.inputAmount?.currency}
             asBadge={currentStep === ConfirmModalState.APPROVING_TOKEN}
           />
         )}

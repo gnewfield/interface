@@ -50,6 +50,7 @@ export enum ConfirmModalState {
   APPROVING_TOKEN,
   PERMITTING,
   PENDING_CONFIRMATION,
+  PENDING_SEND,
 }
 
 const StyledL2Badge = styled(Badge)`

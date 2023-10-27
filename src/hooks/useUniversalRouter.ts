@@ -47,6 +47,7 @@ interface SwapOptions {
   permit?: PermitSignature
   feeOptions?: FeeOptions
   flatFeeOptions?: FlatFeeOptions
+  recipient?: string
 }
 
 export function useUniversalRouterSwapCallback(
@@ -83,6 +84,7 @@ export function useUniversalRouterSwapCallback(
           inputTokenPermit: options.permit,
           fee: options.feeOptions,
           flatFee: options.flatFeeOptions,
+          recipient: options.recipient,
         })
 
         const tx = {
@@ -174,6 +176,7 @@ export function useUniversalRouterSwapCallback(
     options.permit,
     options.feeOptions,
     options.flatFeeOptions,
+    options.recipient,
     analyticsContext,
     blockNumber,
     isAutoSlippage,

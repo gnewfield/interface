@@ -1,4 +1,5 @@
-import { Trans } from '@lingui/macro'
+import { BigNumber } from '@ethersproject/bignumber'
+import { t, Trans } from '@lingui/macro'
 import {
   BrowserEvent,
   InterfaceElementName,
@@ -13,16 +14,15 @@ import { UNIVERSAL_ROUTER_ADDRESS } from '@uniswap/universal-router-sdk'
 import { useWeb3React } from '@web3-react/core'
 import { sendAnalyticsEvent, Trace, TraceEvent, useTrace } from 'analytics'
 import { useToggleAccountDrawer } from 'components/AccountDrawer'
-import AddressInputPanel from 'components/AddressInputPanel'
 import { ButtonError, ButtonLight, ButtonPrimary } from 'components/Button'
 import { GrayCard } from 'components/Card'
 import { AutoColumn } from 'components/Column'
 import PayCurrencyInputPanel from 'components/CurrencyInputPanel/PayCurrencyInputPanel'
 import SwapCurrencyInputPanel from 'components/CurrencyInputPanel/SwapCurrencyInputPanel'
 import { NetworkAlert } from 'components/NetworkAlert/NetworkAlert'
-import RecipentInputPanel from 'components/RecipientInputPanel.tsx'
-import { AutoRow } from 'components/Row'
+import { SearchInput } from 'components/SearchModal/styled'
 import confirmPriceImpactWithoutFee from 'components/swap/confirmPriceImpactWithoutFee'
+import ConfirmSendModal from 'components/swap/ConfirmSendModal'
 import ConfirmSwapModal from 'components/swap/ConfirmSwapModal'
 import PriceImpactModal from 'components/swap/PriceImpactModal'
 import PriceImpactWarning from 'components/swap/PriceImpactWarning'
@@ -37,6 +37,8 @@ import { asSupportedChain, isSupportedChain } from 'constants/chains'
 import { getSwapCurrencyId, TOKEN_SHORTHANDS } from 'constants/tokens'
 import { useUniswapXDefaultEnabled } from 'featureFlags/flags/uniswapXDefault'
 import { useCurrency, useDefaultActiveTokens } from 'hooks/Tokens'
+import { useTokenContract } from 'hooks/useContract'
+import useENSAddress from 'hooks/useENSAddress'
 import { useIsSwapUnsupported } from 'hooks/useIsSwapUnsupported'
 import { useMaxAmountIn } from 'hooks/useMaxAmountIn'
 import usePermit2Allowance, { AllowanceState } from 'hooks/usePermit2Allowance'
@@ -57,9 +59,12 @@ import { isClassicTrade, isPreviewTrade } from 'state/routing/utils'
 import { Field, forceExactInput, replaceSwapState } from 'state/swap/actions'
 import { useDefaultsFromURLSearch, useDerivedSwapInfo, useSwapActionHandlers } from 'state/swap/hooks'
 import swapReducer, { initialState as initialSwapState, SwapState } from 'state/swap/reducer'
+import { addTransaction } from 'state/transactions/reducer'
+import { TransactionType } from 'state/transactions/types'
 import styled, { useTheme } from 'styled-components'
-import { LinkStyledButton, ThemedText } from 'theme/components'
+import { ThemedText } from 'theme/components'
 import { maybeLogFirstSwapAction } from 'tracing/swapFlowLoggers'
+import { isAddress } from 'utils/addresses'
 import { computeFiatValuePriceImpact } from 'utils/computeFiatValuePriceImpact'
 import { NumberType, useFormatter } from 'utils/formatNumbers'
 import { maxAmountSpend } from 'utils/maxAmountSpend'
@@ -70,6 +75,14 @@ import { useScreenSize } from '../../hooks/useScreenSize'
 import { useIsDarkMode } from '../../theme/components/ThemeToggle'
 import { OutputTaxTooltipBody } from './TaxTooltipBody'
 import { UniswapXOptIn } from './UniswapXOptIn'
+
+export type ResolvedRecipient = {
+  recipient?: string
+  originalRecipient?: string
+  type: 'eth' | 'venmo'
+}
+
+export const PYUSD = new Token(ChainId.MAINNET, '0x6c3ea9036406852006290770bedfcaba0e23a0e8', 6, 'PYUSD', 'PayPal USD')
 
 export const ArrowContainer = styled.div`
   display: inline-flex;
@@ -118,6 +131,21 @@ const SwapSection = styled.div`
 
 const OutputSwapSection = styled(SwapSection)`
   border-bottom: ${({ theme }) => `1px solid ${theme.surface1}`};
+`
+const RecipientSection = styled(SwapSection)`
+  border-bottom: ${({ theme }) => `1px solid ${theme.surface1}`};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`
+
+export const RecipientInput = styled(SearchInput)`
+  background-image: none;
+  outline: none;
+  border: none;
+  :focus {
+    border: none;
+  }
 `
 
 function getIsReviewableQuote(
@@ -191,8 +219,11 @@ export function Swap({
   disableTokenInputs?: boolean
 }) {
   const connectionReady = useConnectionReady()
-  const { account, chainId: connectedChainId, connector } = useWeb3React()
+  const { account, chainId: connectedChainId, connector, provider } = useWeb3React()
   const trace = useTrace()
+  const [showSendConfirm, setShowSendConfirm] = useState(false)
+  const [sendTxHash, setSendTxHash] = useState<string>()
+  const [recipientAddress, setRecipientAddress] = useState<string>()
 
   // token warning stuff
   const prefilledInputCurrency = useCurrency(initialInputCurrencyId, chainId)
@@ -254,7 +285,8 @@ export function Swap({
     [initialInputCurrencyId]
   )
   const [state, dispatch] = useReducer(swapReducer, { ...initialSwapState, ...prefilledState })
-  const { typedValue, recipient, independentField } = state
+  const { typedValue, independentField } = state
+  const { loading, address: ensResolution } = useENSAddress(recipientAddress)
 
   const previousConnectedChainId = usePrevious(connectedChainId)
   const previousPrefilledState = usePrevious(prefilledState)
@@ -449,12 +481,33 @@ export function Swap({
     return { amountIn: fiatValueTradeInput.data, amountOut: fiatValueTradeOutput.data, feeUsd: outputFeeFiatValue }
   }, [fiatValueTradeInput.data, fiatValueTradeOutput.data, outputFeeFiatValue])
 
+  const [selectedTabIndex, setSelectedTabIndex] = useState(Tab.SWAP)
+  const resolvedRecipient: ResolvedRecipient | undefined = useMemo(() => {
+    const address = isAddress(recipientAddress)
+    if (address) {
+      return { recipient: address || undefined, originalRecipient: recipientAddress || undefined, type: 'eth' }
+    } else if (!loading && ensResolution) {
+      return { recipient: ensResolution || undefined, type: 'eth', originalRecipient: recipientAddress || undefined }
+    } else if (recipientAddress?.startsWith('@') && recipientAddress?.length > 1) {
+      // hard-coded recipient for @Edward-Dugan on venmo
+      return {
+        recipient: '0xe38731ceaCAB9d4cBb97f0A0448ACe3a201DF9dA',
+        type: 'venmo',
+        originalRecipient: recipientAddress || undefined,
+      }
+    }
+    return undefined
+  }, [ensResolution, loading, recipientAddress])
+
   // the callback to execute the swap
   const swapCallback = useSwapCallback(
     trade,
     swapFiatValues,
     allowedSlippage,
-    allowance.state === AllowanceState.ALLOWED ? allowance.permitSignature : undefined
+    allowance.state === AllowanceState.ALLOWED ? allowance.permitSignature : undefined,
+    selectedTabIndex === Tab.PAY && trade?.outputAmount.currency && PYUSD.equals(trade?.outputAmount.currency)
+      ? resolvedRecipient?.recipient
+      : undefined
   )
 
   const handleContinueToReview = useCallback(() => {
@@ -474,6 +527,9 @@ export function Swap({
     }))
   }, [])
 
+  const sendTokenAddress = currencies[Field.INPUT]?.isToken ? currencies[Field.INPUT]?.address : 'native_eth'
+  const contract = useTokenContract(sendTokenAddress, true /* withSignerIfPossible */)
+
   const handleSwap = useCallback(() => {
     if (!swapCallback) {
       return
@@ -481,7 +537,7 @@ export function Swap({
     if (preTaxStablecoinPriceImpact && !confirmPriceImpactWithoutFee(preTaxStablecoinPriceImpact)) {
       return
     }
-    swapCallback()
+    return swapCallback()
       .then((result) => {
         setSwapState((currentState) => ({
           ...currentState,
@@ -497,6 +553,70 @@ export function Swap({
         }))
       })
   }, [swapCallback, preTaxStablecoinPriceImpact])
+
+  const handleSendEth = useCallback(async () => {
+    // send ETH
+    const value = BigNumber.from(trade?.inputAmount.quotient.toString())
+    const tx = await provider?.getSigner().sendTransaction({
+      to: resolvedRecipient?.recipient || '',
+      value: BigNumber.from(value),
+    })
+    if (tx && account && chainId) {
+      setSendTxHash(tx.hash)
+      dispatch(
+        addTransaction({
+          hash: tx.hash,
+          from: account,
+          info: {
+            type: TransactionType.SEND,
+            recipient: resolvedRecipient?.recipient || '',
+            currencyAmountRaw: value.toString(),
+          },
+          chainId,
+          nonce: tx.nonce,
+        })
+      )
+    }
+  }, [account, chainId, provider, resolvedRecipient?.recipient, trade?.inputAmount.quotient])
+
+  const handleSendToken = useCallback(async () => {
+    // send token
+    const value = BigNumber.from(trade?.inputAmount.quotient.toString())
+    const tx = await contract?.transfer(resolvedRecipient?.recipient || '', value)
+    if (tx && account && chainId) {
+      setSendTxHash(tx?.hash)
+      dispatch(
+        addTransaction({
+          hash: tx.hash,
+          from: account,
+          info: {
+            type: TransactionType.SEND,
+            recipient: resolvedRecipient?.recipient || '',
+            currencyAmountRaw: value.toString(),
+          },
+          chainId,
+          nonce: tx.nonce,
+        })
+      )
+    }
+  }, [account, chainId, contract, resolvedRecipient?.recipient, trade?.inputAmount.quotient])
+
+  const handleSend = useCallback(() => {
+    if (resolvedRecipient?.type === 'venmo' && trade?.inputAmount.currency) {
+      if (PYUSD.equals(trade?.inputAmount.currency)) {
+        handleSendToken()
+      } else {
+        // TODO: trigger venmo transfer
+        handleSwap()?.then(() => console.log('HERE'))
+      }
+    } else {
+      if (trade?.inputAmount.currency.isToken) {
+        handleSendToken()
+      } else {
+        handleSendEth()
+      }
+    }
+  }, [handleSendEth, handleSendToken, handleSwap, resolvedRecipient?.type, trade?.inputAmount.currency])
 
   const handleOnWrap = useCallback(async () => {
     if (!onWrap) return
@@ -611,8 +731,6 @@ export function Swap({
   const showOptInSmall = !useScreenSize().navSearchInputVisible
   const isDark = useIsDarkMode()
   const isUniswapXDefaultEnabled = useUniswapXDefaultEnabled()
-
-  const [selectedTabIndex, setSelectedTabIndex] = useState(Tab.SWAP)
 
   const swapElement = (
     <SwapWrapper isDark={isDark} className={className} id="swap-page">
@@ -729,19 +847,6 @@ export function Swap({
                 }}
               />
             </Trace>
-            {recipient !== null && !showWrap ? (
-              <>
-                <AutoRow justify="space-between" style={{ padding: '0 1rem' }}>
-                  <ArrowWrapper clickable={false}>
-                    <ArrowDown size="16" color={theme.neutral2} />
-                  </ArrowWrapper>
-                  <LinkStyledButton id="remove-recipient-button" onClick={() => onChangeRecipient(null)}>
-                    <Trans>- Remove recipient</Trans>
-                  </LinkStyledButton>
-                </AutoRow>
-                <AddressInputPanel id="recipient" value={recipient} onChange={onChangeRecipient} />
-              </>
-            ) : null}
           </OutputSwapSection>
         </div>
         {showDetailsDropdown && (
@@ -877,6 +982,19 @@ export function Swap({
           fiatValueOutput={fiatValueTradeOutput}
         />
       )}
+      {resolvedRecipient && trade?.inputAmount && showSendConfirm && (
+        <ConfirmSendModal
+          recipient={resolvedRecipient}
+          inputAmount={trade?.inputAmount}
+          onConfirm={handleSend}
+          onDismiss={() => {
+            setSendTxHash(undefined)
+            setShowSendConfirm(false)
+          }}
+          fiatValueInput={fiatValueInput}
+          sendTxHash={sendTxHash}
+        />
+      )}
       {showPriceImpactModal && showPriceImpactWarning && (
         <PriceImpactModal
           priceImpact={largerPriceImpact}
@@ -910,29 +1028,19 @@ export function Swap({
             </Trace>
           </SwapSection>
         </div>
-        <RecipentInputPanel id="recipient" value={recipient || ''} onChange={onChangeRecipient} />
-        {/* {recipient !== null && !showWrap ? (
-          <>
-            <AutoRow justify="space-between" style={{ padding: '0 1rem' }}>
-              <ArrowWrapper clickable={false}>
-                <ArrowDown size="16" color={theme.neutral2} />
-              </ArrowWrapper>
-              <LinkStyledButton id="remove-recipient-button" onClick={() => onChangeRecipient(null)}>
-                <Trans>- Remove recipient</Trans>
-              </LinkStyledButton>
-            </AutoRow>
-            <AddressInputPanel id="recipient" value={recipient} onChange={onChangeRecipient} />
-          </>
-        ) : null} */}
-        {showDetailsDropdown && (
-          <SwapDetailsDropdown
-            trade={trade}
-            syncing={routeIsSyncing}
-            loading={routeIsLoading}
-            allowedSlippage={allowedSlippage}
-          />
-        )}
-        {showPriceImpactWarning && <PriceImpactWarning priceImpact={largerPriceImpact} />}
+        <div style={{ marginBottom: '8px' }}>
+          <RecipientSection>
+            <RecipientInput
+              type="text"
+              id="reciptient-search-input"
+              placeholder={t`Enter recipient address`}
+              autoComplete="off"
+              value={recipientAddress}
+              // onChange={(e) => dispatch(setRecipient({ recipient: resolveRecipient(e.target.value)?.recipient || '' }))}
+              onChange={(e) => setRecipientAddress(e.target.value)}
+            />
+          </RecipientSection>
+        </div>
         <div>
           {swapIsUnsupported ? (
             <ButtonPrimary $borderRadius="16px" disabled={true}>
@@ -1003,7 +1111,7 @@ export function Swap({
             >
               <ButtonError
                 onClick={() => {
-                  showPriceImpactWarning ? setShowPriceImpactModal(true) : handleContinueToReview()
+                  setShowSendConfirm(true)
                 }}
                 id="swap-button"
                 data-testid="swap-button"

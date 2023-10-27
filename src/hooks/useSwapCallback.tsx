@@ -42,7 +42,8 @@ export function useSwapCallback(
   trade: InterfaceTrade | undefined, // trade to execute, required
   fiatValues: { amountIn?: number; amountOut?: number; feeUsd?: number }, // usd values for amount in and out, and the fee value, logged for analytics
   allowedSlippage: Percent, // in bips
-  permitSignature: PermitSignature | undefined
+  permitSignature: PermitSignature | undefined,
+  recipient?: string
 ) {
   const deadline = useTransactionDeadline()
 
@@ -63,6 +64,7 @@ export function useSwapCallback(
       slippageTolerance: allowedSlippage,
       deadline,
       permit: permitSignature,
+      recipient,
       ...getUniversalRouterFeeFields(trade),
     }
   )
