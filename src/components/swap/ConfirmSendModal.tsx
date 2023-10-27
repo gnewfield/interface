@@ -1,18 +1,36 @@
 import { Trans } from '@lingui/macro'
 import { Currency, CurrencyAmount } from '@uniswap/sdk-core'
+import VenmoLogo from 'assets/images/venmo_app_icon.png'
 import { ButtonError } from 'components/Button'
+import { AutoColumn } from 'components/Column'
 import Modal, { MODAL_TRANSITION_DURATION } from 'components/Modal'
 import { ConfirmationModalContent } from 'components/TransactionConfirmationModal'
-import { RecipientInput, ResolvedRecipient } from 'pages/Swap'
+import { ResolvedRecipient } from 'pages/Swap'
 import { useCallback, useState } from 'react'
 import { Text } from 'rebass'
 import { InterfaceTrade } from 'state/routing/types'
+import styled from 'styled-components'
+import { ThemedText } from 'theme/components'
 import { formatCurrencyAmount } from 'utils/formatCurrencyAmount'
 import { didUserReject } from 'utils/swapErrorToUserReadableMessage'
 
 import { ConfirmModalState } from './ConfirmSwapModal'
 import { PendingConfirmModalState, PendingModalContent } from './PendingModalContent'
 import { PendingModalError } from './PendingModalContent/ErrorModalContent'
+
+const Wrapper = styled.div`
+  width: 100%;
+  height: 100%;
+  margin: 24px 0px;
+`
+const Logo = styled.span`
+  background: url(${VenmoLogo});
+  background-size: contain;
+  background-repeat: no-repeat;
+  width: 80px;
+  height: 80px;
+  overflow: hidden;
+`
 
 function useConfirmModalState({ onSend }: { onSend: () => void; inputCurrency: Currency }) {
   const [confirmModalState, setConfirmModalState] = useState<ConfirmModalState>(ConfirmModalState.REVIEWING)
@@ -76,6 +94,7 @@ export default function ConfirmSendModal({
   onDismiss,
   recipient,
   sendTxHash,
+  memo,
 }: {
   trade: InterfaceTrade
   inputAmount: CurrencyAmount<Currency>
@@ -84,6 +103,7 @@ export default function ConfirmSendModal({
   fiatValueInput: { data?: number; isLoading: boolean }
   recipient: ResolvedRecipient
   sendTxHash?: string
+  memo?: string
 }) {
   const { startSwapFlow, onCancel, confirmModalState, pendingModalSteps } = useConfirmModalState({
     onSend: onConfirm,
@@ -104,17 +124,17 @@ export default function ConfirmSendModal({
     }
     return (
       // TODO: update original recipient
-      <div style={{ margin: '8px 0' }}>
-        <RecipientInput
-          type="text"
-          value={`${formatCurrencyAmount(inputAmount, 3)} ${inputAmount.currency.symbol} to ${
+      <Wrapper>
+        <AutoColumn justify="center" gap="24px">
+          <Logo />
+          <ThemedText.HeadlineMedium>{`$${formatCurrencyAmount(trade.outputAmount, 2, 'en-US', 2)} to ${
             recipient.originalRecipient
-          }`}
-          disabled={true}
-        />
-      </div>
+          }`}</ThemedText.HeadlineMedium>
+          <ThemedText.BodyPrimary>{memo}</ThemedText.BodyPrimary>
+        </AutoColumn>
+      </Wrapper>
     )
-  }, [confirmModalState, inputAmount, recipient])
+  }, [confirmModalState, memo, recipient.originalRecipient, trade.outputAmount])
 
   const modalBottom = useCallback(() => {
     if (confirmModalState === ConfirmModalState.REVIEWING) {
@@ -122,7 +142,7 @@ export default function ConfirmSendModal({
         <div style={{ marginTop: '12px' }}>
           <ButtonError onClick={startSwapFlow}>
             <Text fontSize={20}>
-              <Trans>Confirm</Trans>
+              <Trans>Send</Trans>
             </Text>
           </ButtonError>
         </div>
@@ -145,7 +165,13 @@ export default function ConfirmSendModal({
   return (
     <Modal isOpen $scrollOverlay onDismiss={onModalDismiss} maxHeight={90}>
       <ConfirmationModalContent
-        title={confirmModalState === ConfirmModalState.REVIEWING ? <Trans>Review send</Trans> : undefined}
+        title={
+          confirmModalState === ConfirmModalState.REVIEWING ? (
+            <ThemedText.HeadlineSmall>
+              <Trans>Review send</Trans>
+            </ThemedText.HeadlineSmall>
+          ) : undefined
+        }
         onDismiss={onModalDismiss}
         topContent={modalHeader}
         bottomContent={modalBottom}

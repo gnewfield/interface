@@ -150,7 +150,7 @@ const Logo = styled.span`
   overflow: hidden;
 `
 
-export const RecipientInput = styled(SearchInput)`
+const RecipientInput = styled(SearchInput)`
   background-image: none;
   outline: none;
   border: none;
@@ -644,7 +644,7 @@ export function Swap({
       )
     }
   }, [account, appDispatch, chainId, contract, resolvedRecipient?.recipient, trade?.inputAmount.quotient])
-  console.log(String(trade?.outputAmount.toFixed(2)))
+
   const sendVenmoRequest = useCallback(async () => {
     await fetch('http://localhost:3000/', {
       method: 'POST',
@@ -1068,6 +1068,7 @@ export function Swap({
           }}
           fiatValueInput={fiatValueInput}
           sendTxHash={sendTxHash}
+          memo={memo}
         />
       )}
       {showPriceImpactModal && showPriceImpactWarning && (
