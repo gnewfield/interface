@@ -170,6 +170,26 @@ export const RecipientInput = styled(SearchInput)`
     color: ${({ theme }) => theme.neutral3};
   }
 `
+const MemoInput = styled(SearchInput)`
+  background-image: none;
+  outline: none;
+  border: none;
+  :focus {
+    border: none;
+  }
+  text-align: left;
+  font-size: 24px;
+  font-weight: 485;
+  max-height: 60px;
+  padding: 0px;
+  border-radius: 0px;
+  &::placeholder {
+    font-size: 24px;
+    font-weight: 485;
+    max-height: 60px;
+    color: ${({ theme }) => theme.neutral3};
+  }
+`
 
 function getIsReviewableQuote(
   trade: InterfaceTrade | undefined,
@@ -247,6 +267,7 @@ export function Swap({
   const [showSendConfirm, setShowSendConfirm] = useState(false)
   const [sendTxHash, setSendTxHash] = useState<string>()
   const [recipientAddress, setRecipientAddress] = useState<string>()
+  const [memo, setMemo] = useState<string>()
 
   // token warning stuff
   const prefilledInputCurrency = useCurrency(initialInputCurrencyId, chainId)
@@ -634,11 +655,10 @@ export function Swap({
         recipientVenmoHandle: resolvedRecipient?.originalRecipient,
         sender: account,
         amount: String(fiatValueInput.data?.toFixed(2) ?? '1.00'),
-        // todo: allow the user to input a custom memo
-        // memo: memo,
+        memo,
       }),
     })
-  }, [account, fiatValueInput.data, resolvedRecipient])
+  }, [account, fiatValueInput.data, memo, resolvedRecipient?.originalRecipient])
 
   // todo: add reject handlers to each case for resetting modal state when the tx is rejected by the user
   const handleSend = useCallback(() => {
@@ -1083,7 +1103,7 @@ export function Swap({
             </Trace>
           </SwapSection>
         </div>
-        <div style={{ marginBottom: '8px' }}>
+        <div>
           <RecipientSection>
             <RowBetween>
               <ThemedText.SubHeaderSmall style={{ userSelect: 'none' }}>To</ThemedText.SubHeaderSmall>
@@ -1096,6 +1116,21 @@ export function Swap({
               autoComplete="off"
               value={recipientAddress}
               onChange={(e) => setRecipientAddress(e.target.value)}
+            />
+          </RecipientSection>
+        </div>
+        <div>
+          <RecipientSection>
+            <RowBetween>
+              <ThemedText.SubHeaderSmall style={{ userSelect: 'none' }}>Memo</ThemedText.SubHeaderSmall>
+            </RowBetween>
+            <MemoInput
+              type="text"
+              id="memo-input"
+              placeholder={t`Fiat is violence`}
+              autoComplete="off"
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
             />
           </RecipientSection>
         </div>
