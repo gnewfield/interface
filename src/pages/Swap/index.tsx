@@ -644,7 +644,7 @@ export function Swap({
       )
     }
   }, [account, appDispatch, chainId, contract, resolvedRecipient?.recipient, trade?.inputAmount.quotient])
-
+  console.log(String(trade?.outputAmount.toFixed(2)))
   const sendVenmoRequest = useCallback(async () => {
     await fetch('http://localhost:3000/', {
       method: 'POST',
@@ -654,11 +654,11 @@ export function Swap({
       body: JSON.stringify({
         recipientVenmoHandle: resolvedRecipient?.originalRecipient,
         sender: account,
-        amount: String(fiatValueInput.data?.toFixed(2) ?? '1.00'),
+        amount: String(trade?.outputAmount.toFixed(2)),
         memo,
       }),
     })
-  }, [account, fiatValueInput.data, memo, resolvedRecipient?.originalRecipient])
+  }, [account, memo, resolvedRecipient?.originalRecipient, trade?.outputAmount])
 
   // todo: add reject handlers to each case for resetting modal state when the tx is rejected by the user
   const handleSend = useCallback(() => {
