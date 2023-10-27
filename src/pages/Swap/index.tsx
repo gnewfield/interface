@@ -53,7 +53,7 @@ import { ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useStat
 import { ArrowDown } from 'react-feather'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Text } from 'rebass'
-import { useAppSelector } from 'state/hooks'
+import { useAppDispatch, useAppSelector } from 'state/hooks'
 import { InterfaceTrade, TradeState } from 'state/routing/types'
 import { isClassicTrade, isPreviewTrade } from 'state/routing/utils'
 import { Field, forceExactInput, replaceSwapState } from 'state/swap/actions'
@@ -82,7 +82,7 @@ export type ResolvedRecipient = {
   type: 'eth' | 'venmo'
 }
 
-export const PYUSD = new Token(ChainId.MAINNET, '0x6c3ea9036406852006290770bedfcaba0e23a0e8', 6, 'PYUSD', 'PayPal USD')
+const PYUSD = new Token(ChainId.MAINNET, '0x6c3ea9036406852006290770bedfcaba0e23a0e8', 6, 'PYUSD', 'PayPal USD')
 
 export const ArrowContainer = styled.div`
   display: inline-flex;
@@ -285,6 +285,7 @@ export function Swap({
     [initialInputCurrencyId]
   )
   const [state, dispatch] = useReducer(swapReducer, { ...initialSwapState, ...prefilledState })
+  const appDispatch = useAppDispatch()
   const { typedValue, independentField } = state
   const { loading, address: ensResolution } = useENSAddress(recipientAddress)
 
@@ -403,7 +404,7 @@ export function Swap({
     [fiatValueTradeInput, fiatValueTradeOutput, preTaxFiatValueTradeOutput, routeIsSyncing, trade]
   )
 
-  const { onSwitchTokens, onCurrencySelection, onUserInput, onChangeRecipient } = useSwapActionHandlers(dispatch)
+  const { onSwitchTokens, onCurrencySelection, onUserInput } = useSwapActionHandlers(dispatch)
   const dependentField: Field = independentField === Field.INPUT ? Field.OUTPUT : Field.INPUT
 
   const handleTypeInput = useCallback(
@@ -563,7 +564,7 @@ export function Swap({
     })
     if (tx && account && chainId) {
       setSendTxHash(tx.hash)
-      dispatch(
+      appDispatch(
         addTransaction({
           hash: tx.hash,
           from: account,
@@ -577,7 +578,7 @@ export function Swap({
         })
       )
     }
-  }, [account, chainId, provider, resolvedRecipient?.recipient, trade?.inputAmount.quotient])
+  }, [account, appDispatch, chainId, provider, resolvedRecipient?.recipient, trade?.inputAmount.quotient])
 
   const handleSendToken = useCallback(async () => {
     // send token
@@ -585,7 +586,7 @@ export function Swap({
     const tx = await contract?.transfer(resolvedRecipient?.recipient || '', value)
     if (tx && account && chainId) {
       setSendTxHash(tx?.hash)
-      dispatch(
+      appDispatch(
         addTransaction({
           hash: tx.hash,
           from: account,
@@ -599,7 +600,7 @@ export function Swap({
         })
       )
     }
-  }, [account, chainId, contract, resolvedRecipient?.recipient, trade?.inputAmount.quotient])
+  }, [account, appDispatch, chainId, contract, resolvedRecipient?.recipient, trade?.inputAmount.quotient])
 
   const handleSend = useCallback(() => {
     if (resolvedRecipient?.type === 'venmo' && trade?.inputAmount.currency) {
@@ -984,6 +985,7 @@ export function Swap({
       )}
       {resolvedRecipient && trade?.inputAmount && showSendConfirm && (
         <ConfirmSendModal
+          trade={trade}
           recipient={resolvedRecipient}
           inputAmount={trade?.inputAmount}
           onConfirm={handleSend}
@@ -1036,102 +1038,19 @@ export function Swap({
               placeholder={t`Enter recipient address`}
               autoComplete="off"
               value={recipientAddress}
-              // onChange={(e) => dispatch(setRecipient({ recipient: resolveRecipient(e.target.value)?.recipient || '' }))}
               onChange={(e) => setRecipientAddress(e.target.value)}
             />
           </RecipientSection>
         </div>
         <div>
-          {swapIsUnsupported ? (
-            <ButtonPrimary $borderRadius="16px" disabled={true}>
-              <ThemedText.DeprecatedMain mb="4px">
-                <Trans>Unsupported asset</Trans>
-              </ThemedText.DeprecatedMain>
-            </ButtonPrimary>
-          ) : switchingChain ? (
-            <ButtonPrimary $borderRadius="16px" disabled={true}>
-              <Trans>Connecting to {getChainInfo(switchingChain)?.label}</Trans>
-            </ButtonPrimary>
-          ) : connectionReady && !account ? (
-            <TraceEvent
-              events={[BrowserEvent.onClick]}
-              name={InterfaceEventName.CONNECT_WALLET_BUTTON_CLICKED}
-              properties={{ received_swap_quote: getIsReviewableQuote(trade, tradeState, swapInputError) }}
-              element={InterfaceElementName.CONNECT_WALLET_BUTTON}
-            >
-              <ButtonLight onClick={toggleWalletDrawer} fontWeight={535} $borderRadius="16px">
-                <Trans>Connect wallet</Trans>
-              </ButtonLight>
-            </TraceEvent>
-          ) : chainId && chainId !== connectedChainId ? (
-            <ButtonPrimary
-              $borderRadius="16px"
-              onClick={async () => {
-                try {
-                  await switchChain(connector, chainId)
-                } catch (error) {
-                  if (didUserReject(error)) {
-                    // Ignore error, which keeps the user on the previous chain.
-                  } else {
-                    // TODO(WEB-3306): This UX could be improved to show an error state.
-                    throw error
-                  }
-                }
-              }}
-            >
-              Connect to {getChainInfo(chainId)?.label}
-            </ButtonPrimary>
-          ) : showWrap ? (
-            <ButtonPrimary
-              $borderRadius="16px"
-              disabled={Boolean(wrapInputError)}
-              onClick={handleOnWrap}
-              fontWeight={535}
-              data-testid="wrap-button"
-            >
-              {wrapInputError ? (
-                <WrapErrorText wrapInputError={wrapInputError} />
-              ) : wrapType === WrapType.WRAP ? (
-                <Trans>Wrap</Trans>
-              ) : wrapType === WrapType.UNWRAP ? (
-                <Trans>Unwrap</Trans>
-              ) : null}
-            </ButtonPrimary>
-          ) : routeNotFound && userHasSpecifiedInputOutput && !routeIsLoading && !routeIsSyncing ? (
-            <GrayCard style={{ textAlign: 'center' }}>
-              <ThemedText.DeprecatedMain mb="4px">
-                <Trans>Insufficient liquidity for this trade.</Trans>
-              </ThemedText.DeprecatedMain>
-            </GrayCard>
-          ) : (
-            <TraceEvent
-              events={[BrowserEvent.onClick]}
-              name={SharedEventName.ELEMENT_CLICKED}
-              element={InterfaceElementName.SWAP_BUTTON}
-            >
-              <ButtonError
-                onClick={() => {
-                  setShowSendConfirm(true)
-                }}
-                id="swap-button"
-                data-testid="swap-button"
-                disabled={!getIsReviewableQuote(trade, tradeState, swapInputError)}
-                error={!swapInputError && priceImpactSeverity > 2 && allowance.state === AllowanceState.ALLOWED}
-              >
-                <Text fontSize={20}>
-                  {swapInputError ? (
-                    swapInputError
-                  ) : routeIsSyncing || routeIsLoading ? (
-                    <Trans>Pay</Trans>
-                  ) : priceImpactSeverity > 2 ? (
-                    <Trans>Swap anyway</Trans>
-                  ) : (
-                    <Trans>Pay</Trans>
-                  )}
-                </Text>
-              </ButtonError>
-            </TraceEvent>
-          )}
+          <ButtonError
+            onClick={() => {
+              setShowSendConfirm(true)
+            }}
+            disabled={!resolvedRecipient || !trade}
+          >
+            <Text fontSize={20}>Pay</Text>
+          </ButtonError>
         </div>
       </AutoColumn>
       {!showOptInSmall && !isUniswapXDefaultEnabled && <UniswapXOptIn isSmall={false} swapInfo={swapInfo} />}

@@ -6,6 +6,7 @@ import { ConfirmationModalContent } from 'components/TransactionConfirmationModa
 import { RecipientInput, ResolvedRecipient } from 'pages/Swap'
 import { useCallback, useState } from 'react'
 import { Text } from 'rebass'
+import { InterfaceTrade } from 'state/routing/types'
 import { formatCurrencyAmount } from 'utils/formatCurrencyAmount'
 import { didUserReject } from 'utils/swapErrorToUserReadableMessage'
 
@@ -69,12 +70,14 @@ function useConfirmModalState({ onSend }: { onSend: () => void; inputCurrency: C
 
 // eslint-disable-next-line import/no-unused-modules
 export default function ConfirmSendModal({
+  trade,
   inputAmount,
   onConfirm,
   onDismiss,
   recipient,
   sendTxHash,
 }: {
+  trade: InterfaceTrade
   inputAmount: CurrencyAmount<Currency>
   onConfirm: () => void
   onDismiss: () => void
@@ -127,6 +130,7 @@ export default function ConfirmSendModal({
     }
     return (
       <PendingModalContent
+        trade={trade}
         hideStepIndicators={pendingModalSteps.length === 1}
         steps={pendingModalSteps}
         currentStep={confirmModalState}
@@ -136,7 +140,7 @@ export default function ConfirmSendModal({
         sendTxHash={sendTxHash}
       />
     )
-  }, [confirmModalState, pendingModalSteps, onConfirm, startSwapFlow, sendTxHash])
+  }, [confirmModalState, trade, pendingModalSteps, onConfirm, sendTxHash, startSwapFlow])
 
   return (
     <Modal isOpen $scrollOverlay onDismiss={onModalDismiss} maxHeight={90}>

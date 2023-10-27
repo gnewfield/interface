@@ -355,12 +355,13 @@ export function PendingModalContent({
         {/* Fades out after the permit signature. */}
         {currentStep !== ConfirmModalState.PENDING_CONFIRMATION && !sendPending && !sendConfirmed && (
           <CurrencyLoader
-            currency={trade?.inputAmount.currency ?? trade?.inputAmount?.currency}
+            currency={trade?.inputAmount.currency}
             asBadge={currentStep === ConfirmModalState.APPROVING_TOKEN}
           />
         )}
         {/* Shown only during the final step under "success" conditions, and scales in. */}
-        {currentStep === ConfirmModalState.PENDING_CONFIRMATION && showSuccess && <AnimatedEntranceConfirmationIcon />}
+        {currentStep === ConfirmModalState.PENDING_CONFIRMATION ||
+          (currentStep === ConfirmModalState.PENDING_SEND && showSuccess && <AnimatedEntranceConfirmationIcon />)}
         {/* Shown only during the final step on mainnet, when the transaction is sent but pending confirmation. */}
         {currentStep === ConfirmModalState.PENDING_CONFIRMATION && showSubmitted && <AnimatedEntranceSubmittedIcon />}
         {/* Scales in for any step that waits for an onchain transaction, while the transaction is pending. */}
