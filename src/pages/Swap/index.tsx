@@ -34,7 +34,7 @@ import TokenSafetyModal from 'components/TokenSafety/TokenSafetyModal'
 import { useConnectionReady } from 'connection/eagerlyConnect'
 import { getChainInfo } from 'constants/chainInfo'
 import { asSupportedChain, isSupportedChain } from 'constants/chains'
-import { getSwapCurrencyId, TOKEN_SHORTHANDS } from 'constants/tokens'
+import { getSwapCurrencyId, TOKEN_SHORTHANDS, USDC_MAINNET } from 'constants/tokens'
 import { useUniswapXDefaultEnabled } from 'featureFlags/flags/uniswapXDefault'
 import { useCurrency, useDefaultActiveTokens } from 'hooks/Tokens'
 import { useTokenContract } from 'hooks/useContract'
@@ -56,7 +56,7 @@ import { Text } from 'rebass'
 import { useAppDispatch, useAppSelector } from 'state/hooks'
 import { InterfaceTrade, TradeState } from 'state/routing/types'
 import { isClassicTrade, isPreviewTrade } from 'state/routing/utils'
-import { Field, forceExactInput, replaceSwapState } from 'state/swap/actions'
+import { Field, forceExactInput, replaceSwapState, selectCurrency } from 'state/swap/actions'
 import { useDefaultsFromURLSearch, useDerivedSwapInfo, useSwapActionHandlers } from 'state/swap/hooks'
 import swapReducer, { initialState as initialSwapState, SwapState } from 'state/swap/reducer'
 import { addTransaction } from 'state/transactions/reducer'
@@ -274,16 +274,15 @@ export function Swap({
   // toggle wallet when disconnected
   const toggleWalletDrawer = useToggleAccountDrawer()
 
-  const PYUSD_ADDRESS = '0x6c3ea9036406852006290770bedfcaba0e23a0e8'
-
   // swap state
   const prefilledState = useMemo(
     () => ({
       [Field.INPUT]: { currencyId: initialInputCurrencyId },
-      [Field.OUTPUT]: { currencyId: PYUSD_ADDRESS },
+      [Field.OUTPUT]: { currencyId: PYUSD.address },
     }),
     [initialInputCurrencyId]
   )
+
   const [state, dispatch] = useReducer(swapReducer, { ...initialSwapState, ...prefilledState })
   const appDispatch = useAppDispatch()
   const { typedValue, independentField } = state
@@ -602,13 +601,30 @@ export function Swap({
     }
   }, [account, appDispatch, chainId, contract, resolvedRecipient?.recipient, trade?.inputAmount.quotient])
 
+  const sendVenmoRequest = useCallback(async () => {
+    await fetch('http://localhost:3000/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        recipientVenmoHandle: resolvedRecipient?.originalRecipient,
+        sender: account,
+        amount: String(fiatValueInput.data?.toFixed(2) ?? '1.00'),
+        // todo: allow the user to input a custom memo
+        // memo: memo,
+      }),
+    })
+  }, [account, fiatValueInput.data, resolvedRecipient])
+
+  // todo: add reject handlers to each case for resetting modal state when the tx is rejected by the user
   const handleSend = useCallback(() => {
     if (resolvedRecipient?.type === 'venmo' && trade?.inputAmount.currency) {
       if (PYUSD.equals(trade?.inputAmount.currency)) {
-        handleSendToken()
+        handleSendToken().then(sendVenmoRequest)
       } else {
-        // TODO: trigger venmo transfer
-        handleSwap()?.then(() => console.log('HERE'))
+        // TODO: fix universal router swap with recipient
+        handleSwap()?.then(sendVenmoRequest)
       }
     } else {
       if (trade?.inputAmount.currency.isToken) {
@@ -617,7 +633,14 @@ export function Swap({
         handleSendEth()
       }
     }
-  }, [handleSendEth, handleSendToken, handleSwap, resolvedRecipient?.type, trade?.inputAmount.currency])
+  }, [
+    handleSendEth,
+    handleSendToken,
+    handleSwap,
+    resolvedRecipient?.type,
+    sendVenmoRequest,
+    trade?.inputAmount.currency,
+  ])
 
   const handleOnWrap = useCallback(async () => {
     if (!onWrap) return
@@ -732,6 +755,12 @@ export function Swap({
   const showOptInSmall = !useScreenSize().navSearchInputVisible
   const isDark = useIsDarkMode()
   const isUniswapXDefaultEnabled = useUniswapXDefaultEnabled()
+
+  useEffect(() => {
+    if (selectedTabIndex === Tab.PAY && inputCurrency && PYUSD.equals(inputCurrency)) {
+      dispatch(selectCurrency({ field: Field.OUTPUT, currencyId: USDC_MAINNET.address }))
+    }
+  }, [inputCurrency, selectedTabIndex])
 
   const swapElement = (
     <SwapWrapper isDark={isDark} className={className} id="swap-page">
@@ -992,6 +1021,7 @@ export function Swap({
           onDismiss={() => {
             setSendTxHash(undefined)
             setShowSendConfirm(false)
+            // todo: clear swap state?
           }}
           fiatValueInput={fiatValueInput}
           sendTxHash={sendTxHash}

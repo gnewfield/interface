@@ -77,7 +77,7 @@ export function useUniversalRouterSwapCallback(
         // universal-router-sdk reconstructs V2Trade objects, so rather than updating the trade amounts to account for tax, we adjust the slippage tolerance as a workaround
         // TODO(WEB-2725): update universal-router-sdk to not reconstruct trades
         const taxAdjustedSlippageTolerance = options.slippageTolerance.add(trade.totalTaxRate)
-
+        console.log({ options })
         const { calldata: data, value } = SwapRouter.swapERC20CallParameters(trade, {
           slippageTolerance: taxAdjustedSlippageTolerance,
           deadlineOrPreviousBlockhash: options.deadline?.toString(),

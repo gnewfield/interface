@@ -221,8 +221,8 @@ function useStepContents(args: ContentArgs): Record<PendingConfirmModalState, Pe
     () => ({
       [ConfirmModalState.PENDING_SEND]: {
         title: sendConfirmed ? t`Sent!` : t`Send`,
-        subtitle: t`Sending can be done in one transaction.`,
-        bottomLabel: sendPending ? t`Pending...` : t`Proceed in your wallet`,
+        subtitle: t`Your money is on its way!`,
+        bottomLabel: sendPending ? t`Pending...` : t`Proceed in your wallet!!`,
       },
       [ConfirmModalState.WRAPPING]: {
         title: t`Wrap ETH`,
